@@ -20,6 +20,7 @@
             [status-im.ui.components.toolbar.view :as toolbar]
             [status-im.ui.screens.chat.photos :as photos]
             [status-im.ui.screens.profile.components.views :as profile.components]
+            [status-im.ui.screens.profile.db :as profile.db]
             [status-im.ui.screens.profile.user.styles :as styles]
             [status-im.utils.identicon :as identicon]
             [status-im.utils.platform :as platform]
@@ -74,7 +75,7 @@
   [profile.components/profile-header
    {:contact                account
     :allow-icon-change?     true
-    :include-remove-action? (seq photo-path)}])
+    :include-remove-action? (if photo-path (profile.db/base64-jpeg? photo-path))}])
 
 (defn- header-in-toolbar [account]
   (let [displayed-name (multiaccounts/displayed-name account)]
