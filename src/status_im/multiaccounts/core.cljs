@@ -5,6 +5,7 @@
             [status-im.i18n :as i18n]
             [status-im.multiaccounts.update.core :as multiaccounts.update]
             [status-im.native-module.core :as native-module]
+            [status-im.notifications.core :as notifications]
             [status-im.utils.build :as build]
             [status-im.utils.config :as config]
             [status-im.utils.fx :as fx]
@@ -64,6 +65,16 @@
   (multiaccounts.update/multiaccount-update cofx
                                             {:dev-mode? dev-mode?}
                                             {}))
+
+(fx/defn switch-notifications
+  {:events [:multiaccounts.ui/notifications-switched]}
+  [cofx notifications-enabled?]
+  (fx/merge cofx
+            {(if notifications-enabled?
+               ::notifications/enable
+               ::notifications/disable) nil}
+            (multiaccounts.update/multiaccount-update {:notifications-enabled? notifications-enabled?}
+                                                      {})))
 
 (fx/defn switch-chaos-mode
   [{:keys [db] :as cofx} chaos-mode?]
