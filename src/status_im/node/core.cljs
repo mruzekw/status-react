@@ -2,12 +2,12 @@
   (:require [re-frame.core :as re-frame]
             [status-im.constants :as constants]
             [status-im.ethereum.json-rpc :as json-rpc]
-            [status-im.fleet.core :as fleet]
             [status-im.native-module.core :as status]
             [status-im.utils.config :as config]
             [status-im.utils.fx :as fx]
             [status-im.utils.platform :as utils.platform]
-            [status-im.utils.types :as types]))
+            [status-im.utils.types :as types])
+  (:require-macros [status-im.utils.slurp :refer [slurp]]))
 
 (defn- add-custom-bootnodes [config network all-bootnodes]
   (let [bootnodes (as-> all-bootnodes $
@@ -74,13 +74,30 @@
       (if utils.platform/desktop? ""
           config/log-level-status-go)))
 
+(def default-fleets (slurp "resources/config/fleets.json"))
+
+(defn fleets [{:keys [custom-fleets]}]
+  (as-> [(default-fleets)] $
+    (mapv #(:fleets (types/json->clj %)) $)
+    (conj $ custom-fleets)
+    (reduce merge $)))
+
+(defn current-fleet-key [db]
+  (keyword (get-in db [:multiaccount :settings :fleet]
+                   config/fleet)))
+
+(defn get-current-fleet
+  [db]
+  (get (fleets db)
+       (current-fleet-key db)))
+
 (defn- get-multiaccount-node-config
   [{:keys [multiaccount :networks/networks :networks/current-network]
     :or {current-network config/default-network
          networks constants/default-networks}
     :as db}]
-  (let [current-fleet-key (fleet/current-fleet db)
-        current-fleet (get (fleet/fleets db) current-fleet-key)
+  (let [current-fleet-key (current-fleet-key db)
+        current-fleet (get-current-fleet db)
         rendezvous-nodes (pick-nodes 3 (vals (:rendezvous current-fleet)))
         {:keys [installation-id settings bootnodes]
          :or {settings constants/default-multiaccount-settings}} multiaccount
