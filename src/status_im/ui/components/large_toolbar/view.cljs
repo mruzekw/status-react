@@ -67,7 +67,7 @@
    - minimized-toolbar
    - flat-list-with-large-header"
   [header-in-toolbar nav-item toolbar-action-items header content list-ref]
-  (let [to-hide  (reagent/atom false)
+  (let [to-hide  (reagent/atom true)
         anim-opacity (animation/create-value 0)
         scroll-y (animation/create-value 0)]
     (animation/add-listener scroll-y (fn [anim]
