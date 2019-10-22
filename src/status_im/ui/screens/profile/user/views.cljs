@@ -25,7 +25,8 @@
             [status-im.utils.identicon :as identicon]
             [status-im.utils.platform :as platform]
             [status-im.utils.config :as config]
-            [status-im.utils.universal-links.core :as universal-links])
+            [status-im.utils.universal-links.core :as universal-links]
+            [status-im.ui.components.animation :as animation])
   (:require-macros [status-im.utils.views :as views]))
 
 (views/defview share-chat-key []
@@ -196,7 +197,7 @@
     :on-press
     #(re-frame/dispatch [:multiaccounts.logout.ui/logout-pressed])}])
 
-(views/defview my-profile []
+(views/defview my-profile-1 []
   (views/letsubs [list-ref                     (reagent/atom nil)
                   {:keys [public-key
                           preferred-name
@@ -238,3 +239,49 @@
        [status-bar/status-bar {:type :main}]
        (:minimized-toolbar generated-view)
        (:content-with-header generated-view)])))
+
+(defn mt [anim-opacity]
+  (let [{:keys [public-key]
+         :as   multiaccount}         @(re-frame/subscribe [:multiaccount])]
+    [large-toolbar/minimized-tb
+     (header-in-toolbar multiaccount)
+     nil
+     (toolbar-action-items public-key)
+     anim-opacity]))
+
+(defn cwh [list-ref scroll-y]
+  (let [{:keys [public-key
+                preferred-name
+                seed-backed-up?
+                mnemonic
+                keycard-key-uid
+                address]
+         :as   multiaccount}         @(re-frame/subscribe [:multiaccount])
+        active-contacts-count        @(re-frame/subscribe [:contacts/active-count])
+        tribute-to-talk              @(re-frame/subscribe [:tribute-to-talk/profile])
+        registrar                    @(re-frame/subscribe [:ens.stateofus/registrar])
+        show-backup-seed? (and (not seed-backed-up?)
+                               (not (string/blank? mnemonic)))]
+    [large-toolbar/flat-blabla
+     (header multiaccount)
+     (flat-list-content
+      preferred-name registrar tribute-to-talk
+      active-contacts-count show-backup-seed?
+      keycard-key-uid)
+     list-ref
+     scroll-y]))
+
+(defn my-profile []
+  (let [list-ref (reagent/atom nil)
+        anim-opacity (animation/create-value 0)
+        scroll-y (animation/create-value 0)]
+    (large-toolbar/add-listener anim-opacity scroll-y)
+    (fn []
+      [react/safe-area-view
+       {:style
+        (merge {:flex 1}
+               (when platform/ios?
+                 {:margin-bottom tabs.styles/tabs-diff}))}
+       [status-bar/status-bar {:type :main}]
+       [mt anim-opacity]
+       [cwh list-ref scroll-y]])))

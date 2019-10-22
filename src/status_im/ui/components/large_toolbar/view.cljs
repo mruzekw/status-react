@@ -83,3 +83,25 @@
                                           #(reset! to-hide false)))))
     {:minimized-toolbar [minimized-toolbar header-in-toolbar nav-item toolbar-action-items anim-opacity]
      :content-with-header [flat-list-with-large-header header content list-ref scroll-y]}))
+
+(defn add-listener [anim-opacity scroll-y]
+  (let [to-hide  (reagent/atom true)]
+    (animation/add-listener
+     scroll-y
+     (fn [anim]
+       (cond
+         (and (>= (.-value anim) 40) (not @to-hide))
+         (animation/start
+          (styles/minimized-toolbar-fade-in anim-opacity)
+          #(reset! to-hide true))
+
+         (and (< (.-value anim) 40) @to-hide)
+         (animation/start
+          (styles/minimized-toolbar-fade-out anim-opacity)
+          #(reset! to-hide false)))))))
+
+(defn minimized-tb [header-in-toolbar nav-item toolbar-action-items anim-opacity]
+  [minimized-toolbar header-in-toolbar nav-item toolbar-action-items anim-opacity])
+
+(defn flat-blabla [header content list-ref scroll-y]
+  [flat-list-with-large-header header content list-ref scroll-y])
