@@ -53,13 +53,6 @@
              {}
              chats))
 
-(defn sort-message-groups
-  "Sorts message groups according to timestamp of first message in group"
-  [message-groups messages]
-  (sort-by
-   (comp :timestamp (partial get messages) :message-id first second)
-   message-groups))
-
 (defn quoted-message-data
   "Selects certain data from quoted message which must be available in the view"
   [message-id messages]
@@ -67,69 +60,42 @@
     {:from from
      :text (:text content)}))
 
-(defn add-datemark
-  [[datemark
-    message-references]]
-  (let [{:keys [whisper-timestamp timestamp]} (first message-references)]
-    (conj message-references
-          {:value             datemark
-           :type              :datemark
-           :whisper-timestamp whisper-timestamp
-           :timestamp         timestamp})))
-
 (defn datemark? [{:keys [type]}]
   (= type :datemark))
 
 (defn gap? [{:keys [type]}]
   (= type :gap))
 
-(defn transform-message
-  [messages]
-  (fn [{:keys [message-id timestamp-str] :as reference}]
-    (if (or (datemark? reference)
-            (gap? reference))
-      reference
-      (let [{:keys [content quoted-message] :as message} (get messages message-id)
-            {:keys [response-to response-to-v2]} content
-            quote (if quoted-message
-                    quoted-message
-                    (some-> (or response-to-v2 response-to)
-                            (quoted-message-data messages)))]
-        (cond-> (-> message
-                    (update :content dissoc :response-to :response-to-v2)
-                    (assoc :timestamp-str timestamp-str))
-          ;; quoted message reference
-          quote
-          (assoc-in [:content :response-to] quote))))))
-
 (defn check-gap
   [gaps previous-message next-message]
   (let [previous-timestamp     (:whisper-timestamp previous-message)
         next-whisper-timestamp (:whisper-timestamp next-message)
-        next-timestamp         (quot (:timestamp next-message) 1000)
+        next-timestamp         (:timestamp next-message)
         ignore-next-message?   (> (js/Math.abs
                                    (- next-whisper-timestamp next-timestamp))
-                                  120)]
-    (reduce
-     (fn [acc {:keys [from to id]}]
-       (if (and next-message
-                (not ignore-next-message?)
-                (or
-                 (and (nil? previous-timestamp)
-                      (< from next-whisper-timestamp))
-                 (and
-                  (< previous-timestamp from)
-                  (< to next-whisper-timestamp))
-                 (and
-                  (< from previous-timestamp)
-                  (< to next-whisper-timestamp))))
-         (-> acc
-             (update :gaps-number inc)
-             (update-in [:gap :ids] conj id))
-         (reduced acc)))
-     {:gaps-number 0
-      :gap         nil}
-     gaps)))
+                                  120000)]
+    (if (or ignore-next-message?
+            (not next-message))
+      {:gaps-number 0
+       :gap nil}
+      (reduce
+       (fn [acc {:keys [from to id]}]
+         (if (or
+              (and (nil? previous-timestamp)
+                   (> from next-whisper-timestamp))
+              (and
+               (> previous-timestamp from)
+               (> to next-whisper-timestamp))
+              (and
+               (> from previous-timestamp)
+               (> to next-whisper-timestamp)))
+           (-> acc
+               (update :gaps-number inc)
+               (update-in [:gap :ids] conj id))
+           (reduced acc)))
+       {:gaps-number 0
+        :gap         nil}
+       gaps))))
 
 (defn add-gap [messages gaps]
   (conj messages
@@ -137,60 +103,45 @@
          :value (clojure.string/join (:ids gaps))
          :gaps gaps}))
 
-(defn messages-with-datemarks
-  "Converts message groups into sequence of messages interspersed with datemarks,
-  with correct user statuses associated into message"
-  [message-groups messages messages-gaps
+(defn add-gaps
+  "Add gaps to a message-stream"
+  [message-list messages-gaps
    {:keys [highest-request-to lowest-request-from]} all-loaded? public?]
   (transduce
-   (comp
-    (mapcat add-datemark)
-    (map (transform-message messages)))
+   (map identity)
    (fn
      ([]
-      (let [acc {:messages         (list)
+      (let [acc {:messages         []
                  :previous-message nil
                  :gaps             messages-gaps}]
-        (if (and
-             public?
-             all-loaded?
-             (not (nil? highest-request-to))
-             (not (nil? lowest-request-from))
-             (< (- highest-request-to lowest-request-from)
-                mailserver.constants/max-gaps-range))
-          (update acc :messages conj {:type       :gap
-                                      :value      (str :first-gap)
-                                      :first-gap? true})
-          acc)))
+        acc))
      ([{:keys [messages datemark-reference previous-message gaps]} message]
-      (let [new-datemark? (datemark? message)
-            {:keys [gaps-number gap]}
+      (let [{:keys [gaps-number gap]}
             (check-gap gaps previous-message message)
             add-gap?      (pos? gaps-number)]
-        {:messages           (cond-> messages
+        {:messages           (cond-> (conj messages message)
 
                                add-gap?
-                               (add-gap gap)
-
-                               :always
-                               (conj
-                                (cond-> message
-                                  (not new-datemark?)
-                                  (assoc
-                                   :datemark
-                                   (:value datemark-reference)))))
+                               (add-gap gap))
          :previous-message   message
-         :datemark-reference (if new-datemark?
-                               message
-                               datemark-reference)
          :gaps               (if add-gap?
                                (drop gaps-number gaps)
                                gaps)}))
      ([{:keys [messages gaps]}]
       (cond-> messages
+        (and
+         public?
+         all-loaded?
+         (not (nil? highest-request-to))
+         (not (nil? lowest-request-from))
+         (< (- highest-request-to lowest-request-from)
+            mailserver.constants/max-gaps-range))
+        (conj {:type       :gap
+               :value      (str :first-gap)
+               :first-gap? true})
         (seq gaps)
         (add-gap {:ids (map :id gaps)}))))
-   message-groups))
+   message-list))
 
 (defn- set-previous-message-info [stream]
   (let [{:keys [display-photo? message-type] :as previous-message} (peek stream)]

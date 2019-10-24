@@ -12,6 +12,7 @@
             [status-im.utils.datetime :as time]
             [status-im.utils.fx :as fx]
             [status-im.utils.priority-map :refer [empty-message-map]]
+            [status-im.chat.models.message-list :as message-list]
             [taoensso.timbre :as log]))
 
 (def index-messages (partial into empty-message-map
@@ -82,6 +83,7 @@
                                           #(re-frame/dispatch
                                             [:chats-list/load-success %])}))
 
+;; If empty set, otherwise concatenate, calculate datemark on the new set
 (fx/defn messages-loaded
   "Loads more messages for current chat"
   {:events [::messages-loaded]}
@@ -91,28 +93,37 @@
   (when-not (or (nil? current-chat-id)
                 (not= chat-id current-chat-id))
     (let [already-loaded-messages    (get-in db [:chats current-chat-id :messages])
+          loaded-unviewed-messages-ids (get-in db [:chats current-chat-id :loaded-unviewed-messages-ids] #{})
           ;; We remove those messages that are already loaded, as we might get some duplicates
-          new-messages               (remove (comp already-loaded-messages :message-id)
-                                             messages)
-          unviewed-message-ids       (reduce
-                                      (fn [acc {:keys [seen message-id] :as message}]
-                                        (if (not seen)
-                                          (conj acc message-id)
-                                          acc))
-                                      #{}
-                                      new-messages)
+          {:keys [all-messages
+                  new-messages
+                  unviewed-message-ids]} (reduce (fn [{:keys [all-messages] :as acc}
+                                                      {:keys [seen message-id] :as message}]
+                                                   (cond-> acc
+                                                     (not seen)
+                                                     (update :unviewed-message-ids conj message-id)
 
-          indexed-messages           (index-messages new-messages)
-          new-message-ids            (keys indexed-messages)]
+                                                     (nil? (get all-messages message-id))
+                                                     (update :new-messages conj message)
+
+                                                     :always
+                                                     (update :all-messages assoc message-id message)))
+                                                 {:messages already-loaded-messages
+                                                  :unviewed-message-ids loaded-unviewed-messages-ids
+                                                  :new-messages []}
+                                                 messages)]
       (fx/merge cofx
                 {:db (-> db
-                         (update-in [:chats current-chat-id :loaded-unviewed-messages-ids] clojure.set/union  unviewed-message-ids)
+                         (assoc-in [:chats current-chat-id :loaded-unviewed-messages-ids] unviewed-message-ids)
                          (assoc-in [:chats current-chat-id :messages-initialized?] true)
-                         (update-in [:chats current-chat-id :messages] merge indexed-messages)
+                         (assoc-in [:chats current-chat-id :messages] all-messages)
+                         (assoc-in [:chats current-chat-id :message-list]
+                                   (message-list/concat-streams
+                                    (get-in db [:chats current-chat-id :message-list])
+                                    new-messages))
                          (assoc-in [:chats current-chat-id :cursor] cursor)
                          (assoc-in [:chats current-chat-id :all-loaded?]
                                    (empty? cursor)))}
-                (group-chat-messages current-chat-id new-messages)
                 (chat-model/mark-messages-seen current-chat-id)))))
 
 (fx/defn load-more-messages

@@ -2,6 +2,7 @@
   (:require [status-im.group-chats.core :as group-chats]
             [status-im.contact.core :as contact]
             [status-im.utils.fx :as fx]
+            [status-im.chat.models.message :as chat.message]
             [status-im.ens.core :as ens]
             [status-im.pairing.core :as pairing]
             [status-im.transport.message.contact :as transport.contact]
@@ -54,6 +55,16 @@
 (extend-type protocol/Message
   protocol/StatusMessage
   (receive [this chat-id signature timestamp cofx]
-    (fx/merge cofx
-              (transport.message/receive-transit-message this chat-id signature timestamp)
-              (ens/verify-names-from-message this signature))))
+    (let [message (assoc (into {} this)
+                         :message-id
+                         (get-in cofx [:metadata :messageId])
+                         :chat-id chat-id
+                         :whisper-timestamp (* 1000 timestamp)
+                         :alias (get-in cofx [:metadata :author :alias])
+                         :identicon (get-in cofx [:metadata :author :identicon])
+                         :from signature
+                         :metadata (:metadata cofx)
+                         :js-obj (:js-obj cofx))]
+      (fx/merge cofx
+                (chat.message/receive-many [message])
+                (ens/verify-names-from-message this signature)))))

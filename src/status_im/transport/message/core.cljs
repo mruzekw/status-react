@@ -3,6 +3,7 @@
   (:require [goog.object :as o]
             [re-frame.core :as re-frame]
             [status-im.chat.models.message :as models.message]
+            [status-im.utils.handlers :as handlers]
             [status-im.contact.device-info :as device-info]
             [status-im.ethereum.json-rpc :as json-rpc]
             [status-im.ethereum.core :as ethereum]
@@ -65,6 +66,17 @@
       (aget obj i))
     [obj]))
 
+(handlers/register-handler-fx
+ ::process
+ (fn [cofx [_ messages now-in-s]]
+   (let [[chat-id message] (first messages)
+         remaining-messages (rest messages)]
+     (if (seq remaining-messages)
+       (assoc
+        (receive-message cofx now-in-s chat-id message)
+        :dispatch [::process remaining-messages now-in-s])
+       (receive-message cofx now-in-s chat-id message)))))
+
 (fx/defn receive-whisper-messages
   [{:keys [now] :as cofx} error messages chat-id]
   (if (and (not error)
@@ -75,6 +87,27 @@
                                    messages)]
       (apply fx/merge cofx receive-message-fxs))
     (log/error "Something went wrong" error messages)))
+
+(fx/defn receive-messages-2 [{:keys [now] :as cofx} event-js]
+  (let [now-in-s (quot now 1000)
+        events (reduce
+                (fn [acc message-specs]
+                  (let [chat (.-chat message-specs)
+                        messages (.-messages message-specs)
+                        error (.-error message-specs)
+                        chat-id (if (or (.-discovery chat)
+                                        (.-negotiated chat))
+                                  nil
+                                  (.-chatId chat))]
+                    (if (seq messages)
+                      (reduce (fn [acc m]
+                                (conj acc [chat-id m]))
+                              acc
+                              messages)
+                      acc)))
+                []
+                (.-messages event-js))]
+    {:dispatch [::process events now-in-s]}))
 
 (fx/defn receive-messages [cofx event-js]
   (let [fxs (keep
@@ -191,20 +224,3 @@
                      :on-success #(log/debug "successfully confirmed messages")
                      :on-failure #(log/error "failed to confirm messages" %)}))))
 
-(fx/defn receive-transit-message [cofx message chat-id signature timestamp]
-  (let [received-message-fx {:chat-received-message/add-fx
-                             [(assoc (into {} message)
-                                     :message-id
-                                     (get-in cofx [:metadata :messageId])
-                                     :chat-id chat-id
-                                     :whisper-timestamp timestamp
-                                     :alias (get-in cofx [:metadata :author :alias])
-                                     :identicon (get-in cofx [:metadata :author :identicon])
-                                     :from signature
-                                     :metadata (:metadata cofx)
-                                     :js-obj (:js-obj cofx))]}]
-    (whitelist/filter-message cofx
-                              received-message-fx
-                              (:message-type message)
-                              (get-in message [:content :tribute-transaction])
-                              signature)))

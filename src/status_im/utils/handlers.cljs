@@ -21,14 +21,21 @@
   (let [[first second] (get-coeffect ctx :event)]
     first))
 
+(def timing (atom nil))
+
 (def debug-handlers-names
   "Interceptor which logs debug information to js/console for each event."
   (->interceptor
    :id     :debug-handlers-names
+   :after  (fn [context]
+             (log/debug "Handled re-frame event: " (pretty-print-event context)
+                        " time " (- (.getTime (new js/Date)) (.getTime @timing))
+                        " ms ")
+             context)
+
    :before (fn debug-handlers-names-before
              [context]
-             (when @pre-event-callback
-               (@pre-event-callback (get-coeffect context :event)))
+             (reset! timing (new js/Date))
              (log/debug "Handling re-frame event: " (pretty-print-event context))
              context)))
 
@@ -89,8 +96,6 @@
 
 (def default-interceptors
   [debug-handlers-names
-   (when js/goog.DEBUG
-     check-spec)
    (re-frame/inject-cofx :now)])
 
 (defn- parse-json

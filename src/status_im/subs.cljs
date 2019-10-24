@@ -707,7 +707,7 @@
  :<- [:mailserver/gaps]
  :<- [:chats/current-chat-id]
  (fn [[gaps chat-id]]
-   (sort-by :from (vals (get gaps chat-id)))))
+   (reverse (sort-by :from (vals (get gaps chat-id))))))
 
 (re-frame/reg-sub
  :chats/range
@@ -729,18 +729,15 @@
    (:public? chat)))
 
 (re-frame/reg-sub
- :chats/current-chat-messages-stream
- :<- [:chats/current-chat-messages]
- :<- [:chats/current-chat-message-groups]
+ :chats/current-chat-messages-stream-2
+ :<- [:chats/current-chat]
  :<- [:chats/messages-gaps]
  :<- [:chats/range]
  :<- [:chats/all-loaded?]
  :<- [:chats/public?]
- (fn [[messages message-groups messages-gaps range all-loaded? public?]]
-   (-> (chat.db/sort-message-groups message-groups messages)
-       (chat.db/messages-with-datemarks
-        messages messages-gaps range all-loaded? public?)
-       chat.db/messages-stream)))
+ (fn [[{:keys [message-list]} messages-gaps range all-loaded? public?]]
+   (-> message-list
+       (chat.db/add-gaps messages-gaps range all-loaded? public?))))
 
 (re-frame/reg-sub
  :chats/current-chat-intro-status
@@ -1591,6 +1588,27 @@
                        (:name contact))
           :alias (or (:alias contact)
                      (gfycat/generate-gfy identity))})))))
+
+(re-frame/reg-sub
+ :messages/quote-info
+ :<- [:chats/current-chat]
+ :<- [:contacts/contacts]
+ :<- [:multiaccount]
+ (fn [[{:keys [messages]} contacts current-multiaccount] [_ message-id]]
+   (when-let [message (get messages message-id)]
+     (let [identity (:from message)
+           me? (= (:public-key current-multiaccount) identity)]
+       (if me?
+         {:ens-name (:name current-multiaccount)
+          :alias (gfycat/generate-gfy identity)}
+         (let [contact (or (contacts identity)
+                           (contact.db/public-key->new-contact identity))]
+           {:quote     {:from  identity
+                        :text (get-in message [:content :text])}
+            :ens-name  (when (:ens-verified contact)
+                         (:name contact))
+            :alias (or (:alias contact)
+                       (gfycat/generate-gfy identity))}))))))
 
 (re-frame/reg-sub
  :contacts/all-contacts-not-in-current-chat

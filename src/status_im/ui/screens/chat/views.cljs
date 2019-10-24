@@ -309,10 +309,16 @@
 
 (defonce messages-list-ref (atom nil))
 
+(defn save-last-clock-value [items]
+  (let [viewable-items (.-viewableItems items)
+        last-item     (aget viewable-items (- (.-length viewable-items) 1))]
+    (when false
+      (re-frame/dispatch [:chats/set-viewable-item (:clock-value (.-item last-item))]))))
+
 (defview messages-view
   [{:keys [group-chat chat-id pending-invite-inviter-name contact] :as chat}
    modal?]
-  (letsubs [messages           [:chats/current-chat-messages-stream]
+  (letsubs [messages           [:chats/current-chat-messages-stream-2]
             current-public-key [:multiaccount/public-key]]
     {:component-did-mount
      (fn [args]
@@ -335,6 +341,7 @@
                                           :row                message
                                           :idx                idx
                                           :list-ref           messages-list-ref}])
+           :onViewableItemsChanged    save-last-clock-value
            :inverted                  true
            :onEndReached              #(re-frame/dispatch [:chat.ui/load-more-messages])
            :keyboardShouldPersistTaps :handled}
@@ -351,7 +358,7 @@
 
 (defview messages-view-desktop [{:keys [chat-id group-chat]}
                                 modal?]
-  (letsubs [messages           [:chats/current-chat-messages-stream]
+  (letsubs [messages           [:chats/current-chat-messages-stream-2]
             current-public-key [:multiaccount/public-key]
             messages-to-load   (reagent/atom load-step)
             chat-id*           (reagent/atom nil)]

@@ -5,6 +5,7 @@
             [status-im.chat.db :as chat.db]
             [status-im.chat.models :as chat-model]
             [status-im.chat.models.loading :as chat-loading]
+            [status-im.chat.models.message-list :as message-list]
             [status-im.chat.models.message-content :as message-content]
             [status-im.constants :as constants]
             [status-im.contact.db :as contact.db]
@@ -52,6 +53,7 @@
 (defn system-message? [{:keys [message-type]}]
   (= :system-message message-type))
 
+;; This is something we should be doing only at time intervals, no need to do it on each message
 (fx/defn re-index-message-groups
   "Relative datemarks of message groups can get obsolete with passing time,
   this function re-indexes them for given chat"
@@ -121,21 +123,20 @@
               {:db            (cond->
                                (-> db
                                    (update-in [:chats chat-id :messages] assoc message-id prepared-message)
-                                   (update-in [:chats chat-id :last-clock-value] (partial utils.clocks/receive clock-value)))
+                                   (update-in [:chats chat-id :last-clock-value] (partial utils.clocks/receive clock-value))
+                                   (update-in [:chats chat-id :message-list] message-list/add-message prepared-message))
 
                                 (and (not current-chat?)
                                      (not= from current-public-key))
                                 (update-in [:chats chat-id :loaded-unviewed-messages-ids]
                                            (fnil conj #{}) message-id))}
-              #(messages-store/save-message % prepared-message)
+              #_(messages-store/save-message % prepared-message)
+
               (when (and platform/desktop?
                          (not batch?)
                          (not (system-message? prepared-message)))
-                (chat-model/update-dock-badge-label))
-              (when-not batch?
-                (re-index-message-groups chat-id))
-              (when-not batch?
-                (chat-loading/group-chat-messages chat-id [message])))))
+
+                (chat-model/update-dock-badge-label)))))
 
 (defn ensure-clock-value [{:keys [clock-value] :as message} {:keys [last-clock-value]}]
   (if clock-value
@@ -219,15 +220,10 @@
                  messages))))))
 
 (defn- update-last-message [all-chats chat-id]
-  (let [{:keys [messages message-groups]}
+  (let [{:keys [messages message-list]}
         (get all-chats chat-id)
         {:keys [content content-type clock-value timestamp]}
-        (->> (chat.db/sort-message-groups message-groups messages)
-             last
-             second
-             last
-             :message-id
-             (get messages))]
+        (first message-list)]
     (chat-model/upsert-chat
      {:chat-id                   chat-id
       :last-message-content      content
@@ -261,28 +257,15 @@
         chat-ids                     (keys chat->message)
         never-synced-public-chat-ids (chat-ids->never-synced-public-chat-ids
                                       (get-in cofx [:db :chats]) chat-ids)
-        chats-fx-fns                 (map (fn [chat-id]
-                                            (let [unviewed-messages-count
-                                                  (calculate-unviewed-messages-count
-                                                   cofx
-                                                   chat-id
-                                                   (get chat->message chat-id))]
-                                              (chat-model/upsert-chat
-                                               {:chat-id                 chat-id
-                                                :is-active               true
-                                                :timestamp               now
-                                                :unviewed-messages-count unviewed-messages-count})))
-                                          chat-ids)
-        messages-fx-fns              (map add-received-message deduped-messages)
-        groups-fx-fns                (map #(update-group-messages chat->message %) chat-ids)]
-    (apply fx/merge cofx (concat chats-fx-fns
-                                 messages-fx-fns
-                                 groups-fx-fns
-                                 (when platform/desktop?
-                                   [(chat-model/update-dock-badge-label)])
-                                 [(update-last-messages chat-ids)]
-                                 (when (seq never-synced-public-chat-ids)
-                                   [(declare-syncd-public-chats! never-synced-public-chat-ids)])))))
+        chats-fx-fns                 []
+        messages-fx-fns              (map add-received-message deduped-messages)]
+    (apply fx/merge cofx (concat
+                          chats-fx-fns
+                          messages-fx-fns
+                          (when platform/desktop?
+                            [(chat-model/update-dock-badge-label)])
+                          (when (seq never-synced-public-chat-ids)
+                            [(declare-syncd-public-chats! never-synced-public-chat-ids)])))))
 
 (defn system-message [{:keys [now] :as cofx} {:keys [clock-value chat-id content from]}]
   (let [{:keys [last-clock-value]} (get-in cofx [:db :chats chat-id])
@@ -422,7 +405,7 @@
         message-data                        (-> message
                                                 (assoc :from (multiaccounts.model/current-public-key cofx)
                                                        :timestamp now
-                                                       :whisper-timestamp (quot now 1000)
+                                                       :whisper-timestamp now
                                                        :clock-value (utils.clocks/send
                                                                      last-clock-value))
                                                 (tribute-to-talk/add-transaction-hash db)

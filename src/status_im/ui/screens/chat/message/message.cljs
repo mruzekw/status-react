@@ -44,16 +44,20 @@
                                                                     (get content :command-ref))
     content content-type]])
 
-(defview quoted-message [{:keys [from text]} outgoing current-public-key]
-  (letsubs [{:keys [ens-name alias]} [:contacts/contact-name-by-identity from]]
-    [react/view {:style (style/quoted-message-container outgoing)}
-     [react/view {:style style/quoted-message-author-container}
-      [vector-icons/tiny-icon :tiny-icons/tiny-reply {:color (if outgoing colors/white-transparent colors/gray)}]
-      (chat.utils/format-reply-author from alias ens-name current-public-key (partial style/quoted-message-author outgoing))]
+(defview quoted-message [message-id {:keys [from text]} outgoing current-public-key]
+  (letsubs [{:keys [content
+                    ens-name
+                    alias]}
+            [:messages/quote-info message-id]]
+    (when (or content text)
+      [react/view {:style (style/quoted-message-container outgoing)}
+       [react/view {:style style/quoted-message-author-container}
+        [vector-icons/tiny-icon :tiny-icons/tiny-reply {:color (if outgoing colors/white-transparent colors/gray)}]
+        (chat.utils/format-reply-author (or from (:from content)) alias ens-name current-public-key (partial style/quoted-message-author outgoing))]
 
-     [react/text {:style           (style/quoted-message-text outgoing)
-                  :number-of-lines 5}
-      text]]))
+       [react/text {:style           (style/quoted-message-text outgoing)
+                    :number-of-lines 5}
+        (or text (:text content))]])))
 
 (defview message-content-status [{:keys [content]}]
   [react/view style/status-container
@@ -66,12 +70,16 @@
    (i18n/label (if expanded? :show-less :show-more))])
 
 (defn text-message
-  [{:keys [chat-id message-id content timestamp-str group-chat outgoing current-public-key expanded?] :as message}]
+  [{:keys [chat-id message-id content
+           timestamp-str group-chat outgoing current-public-key expanded?] :as message}]
   [message-view message
-   (let [collapsible? (and (:should-collapse? content) group-chat)]
+   (let [response-to (or (:response-to content)
+                         (:response-to-v2 content))
+
+         collapsible? (and (:should-collapse? content) group-chat)]
      [react/view
-      (when (:response-to content)
-        [quoted-message (:response-to content) outgoing current-public-key])
+      (when response-to
+        [quoted-message response-to (:quoted-message message) outgoing current-public-key])
       (apply react/nested-text
              (cond-> {:style (style/text-message collapsible? outgoing)
                       :text-break-strategy :balanced
@@ -93,12 +101,14 @@
 
 (defn emoji-message
   [{:keys [content current-public-key alias] :as message}]
-  [message-view message
-   [react/view {:style (style/style-message-text false)}
-    (when (:response-to content)
-      [quoted-message (:response-to content) alias false current-public-key])
-    [react/text {:style (style/emoji-message message)}
-     (:text content)]]])
+  (let [response-to (or (:response-to content)
+                        (:response-to-v2 content))]
+    [message-view message
+     [react/view {:style (style/style-message-text false)}
+      (when response-to
+        [quoted-message response-to (:quoted-message message) alias false current-public-key])
+      [react/text {:style (style/emoji-message message)}
+       (:text content)]]]))
 
 (defmulti message-content (fn [_ message _] (message :content-type)))
 

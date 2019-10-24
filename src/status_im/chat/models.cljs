@@ -19,7 +19,6 @@
             [status-im.utils.fx :as fx]
             [status-im.utils.gfycat.core :as gfycat]
             [status-im.utils.platform :as platform]
-            [status-im.utils.priority-map :refer [empty-message-map]]
             [status-im.utils.utils :as utils]
             [taoensso.timbre :as log]))
 
@@ -92,7 +91,7 @@
      :timestamp          now
      :contacts           #{chat-id}
      :last-clock-value   0
-     :messages           empty-message-map}))
+     :messages           {}}))
 
 (fx/defn upsert-chat
   "Upsert chat when not deleted"
@@ -134,7 +133,7 @@
     (fx/merge
      cofx
      {:db            (update-in db [:chats chat-id] merge
-                                {:messages                  empty-message-map
+                                {:messages                  {}
                                  :message-groups            {}
                                  :last-message-content      nil
                                  :last-message-content-type nil

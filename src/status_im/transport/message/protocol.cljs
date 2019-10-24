@@ -71,6 +71,4 @@
                     (send-direct-message current-public-key nil this))
                   (send-with-pubkey params)))))
   (validate [this]
-    (if (spec/valid? :message/message this)
-      this
-      (log/warn "failed to validate Message" (spec/explain-str :message/message this)))))
+    this))

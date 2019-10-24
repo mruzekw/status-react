@@ -1607,6 +1607,13 @@
  (fn [cofx _]
    (logging/show-logs-dialog cofx)))
 
+(handlers/register-handler-fx
+ :chats/set-viewable-item
+ (fn [{:keys [db]} [_ clock-value]]
+   (let [chat-id (:current-chat-id db)]
+     (when chat-id
+       {:db (update db assoc-in [:chats chat-id :last-viewable-clock-value] clock-value)}))))
+
 (re-frame/reg-fx
  :dismiss-keyboard
  (fn []
