@@ -28,9 +28,9 @@
   (->interceptor
    :id     :debug-handlers-names
    :after  (fn [context]
-             (log/debug "Handled re-frame event: " (pretty-print-event context)
-                        " time " (- (.getTime (new js/Date)) (.getTime @timing))
-                        " ms ")
+             (log/info "Handled re-frame event: " (pretty-print-event context)
+                       " time " (- (.getTime (new js/Date)) (.getTime @timing))
+                       " ms ")
              context)
 
    :before (fn debug-handlers-names-before

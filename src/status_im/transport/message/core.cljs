@@ -74,7 +74,7 @@
      (if (seq remaining-messages)
        (assoc
         (receive-message cofx now-in-s chat-id message)
-        :dispatch [::process remaining-messages now-in-s])
+        :dispatch-later [{:ms 16 :dispatch [::process remaining-messages now-in-s]}])
        (receive-message cofx now-in-s chat-id message)))))
 
 (fx/defn receive-whisper-messages
