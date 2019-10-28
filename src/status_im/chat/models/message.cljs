@@ -130,7 +130,7 @@
                                 ;; The chat has been initialized
                                 (or
                                  current-chat?
-                                 (get-in db [:chats :messages-initialized?]))
+                                 (get-in db [:chats chat-id :messages-initialized?]))
                                 (update-in [:chats chat-id :message-list] message-list/add-message prepared-message)
 
                                 (and (not current-chat?)
