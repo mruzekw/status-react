@@ -212,29 +212,30 @@
 
 (defn message-body
   [{:keys [last-in-group?
+           first-in-group?
            display-photo?
            alias
-           display-username?
            from
            outgoing
            modal?
            content] :as message} child]
-  [react/view (style/group-message-wrapper message)
-   [react/view (style/message-body message)
-    (when display-photo?
-      [react/view (style/message-author outgoing)
-       (when last-in-group?
-         [react/touchable-highlight {:on-press #(when-not modal? (re-frame/dispatch [:chat.ui/show-profile from]))}
-          [react/view
-           [photos/member-photo from]]])])
-    [react/view (style/group-message-view outgoing display-photo?)
-     (when display-username?
-       [react/touchable-opacity {:on-press #(re-frame/dispatch [:chat.ui/show-profile from])}
-        [message-author-name from alias]])
-     [react/view {:style (style/timestamp-content-wrapper outgoing)}
-      child]]]
-   [react/view (style/delivery-status outgoing)
-    [message-delivery-status message]]])
+  (let [display-username? last-in-group?]
+    [react/view (style/group-message-wrapper message)
+     [react/view (style/message-body message)
+      (when display-photo?
+        [react/view (style/message-author outgoing)
+         (when first-in-group?
+           [react/touchable-highlight {:on-press #(when-not modal? (re-frame/dispatch [:chat.ui/show-profile from]))}
+            [react/view
+             [photos/member-photo from]]])])
+      [react/view (style/group-message-view outgoing display-photo?)
+       (when display-username?
+         [react/touchable-opacity {:on-press #(re-frame/dispatch [:chat.ui/show-profile from])}
+          [message-author-name from alias]])
+       [react/view {:style (style/timestamp-content-wrapper outgoing)}
+        child]]]
+     [react/view (style/delivery-status outgoing)
+      [message-delivery-status message]]]))
 
 (defn open-chat-context-menu
   [{:keys [message-id content] :as message}]

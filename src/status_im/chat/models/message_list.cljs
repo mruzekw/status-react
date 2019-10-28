@@ -58,76 +58,18 @@
                                      :clock-value (:clock-value (peek messages-with-datemarks))
                                      :type  :datemark}))))
 
-(defn- set-previous-message-info [stream]
-  (let [{:keys [display-photo? message-type] :as previous-message} (peek stream)]
-    (conj (pop stream) (assoc previous-message
-                              :display-username? (and display-photo?
-                                                      (not= :system-message message-type))
-                              :first-in-group?   true))))
+;; any message that comes after this amount of ms will be grouped separately
+(def ^:private group-ms 60000)
+
+(defn same-group? [a b]
+  (and
+   (= (:from a) (:from b))
+   (<= (js/Math.abs (- (:whisper-timestamp a) (:whisper-timestamp b))) group-ms)))
 
 (defn display-photo? [{:keys [outgoing message-type]}]
   (or (= :system-message message-type)
       (and (not outgoing)
            (not (= :user-message message-type)))))
-
-;; any message that comes after this amount of ms will be grouped separately
-(def ^:private group-ms 60000)
-
-(defn add-positional-metadata-to-message [{:keys [type message-type from datemark outgoing whisper-timestamp] :as message}
-                                          {:keys [last-outgoing-seen?] :as previous-message}]
-  (let [;; Was the previous message from a different author or this message
-        ;; comes after x ms
-        last-in-group?           (or (= :system-message message-type)
-                                     (not= from (:from previous-message))
-                                     (> (- (:whisper-timestamp previous-message) whisper-timestamp) group-ms))
-        ;; Have we seen an outgoing message already?
-        last-outgoing?           (and (not last-outgoing-seen?)
-                                      outgoing)]
-    (assoc message
-           :last?           false
-           :display-photo?  (display-photo? message)
-           :last-in-group?  last-in-group?
-           :last-outgoing-seen? last-outgoing-seen?
-           :last-outgoing?  last-outgoing?)))
-
-(defn add-positional-metadata
-  "Reduce step which adds positional metadata to a message and conditionally
-  update the previous message with :first-in-group?."
-  [stream
-   {:keys [type message-type from datemark outgoing whisper-timestamp] :as message}]
-  (let [previous-message         (peek stream)
-        {:keys [last-outgoing?
-                last-in-group?]
-         :as new-message}         (add-positional-metadata-to-message message previous-message)
-        datemark?                (= :datemark type)
-        ;; If this is a datemark or this is the last-message of a group,
-        ;; then the previous message was the first
-        previous-first-in-group? (or datemark?
-                                     last-in-group?)]
-    (cond-> stream
-      previous-first-in-group?
-      ;; update previous message if necessary
-      set-previous-message-info
-      :always
-      (conj new-message))))
-
-(defn messages-stream
-  "Enhances the messages in message sequence interspersed with datemarks
-  with derived stream context information, like:
-  `:first-in-group?`, `last-in-group?`, `:last?` and `:last-outgoing?` flags."
-  [ordered-messages]
-  (when (seq ordered-messages)
-    (let [initial-message (first ordered-messages)
-          last-outgoing? (:outgoing initial-message)
-          message-with-metadata (assoc initial-message
-                                       :last-in-group? true
-                                       :last? true
-                                       :display-photo? (display-photo? initial-message)
-                                       :last-outgoing-seen? last-outgoing?
-                                       :last-outgoing? last-outgoing?)]
-      (->> (rest ordered-messages)
-           (reduce add-positional-metadata
-                   [message-with-metadata])))))
 
 (defn compare-fn [a b]
   (let [initial-comparison (compare (:clock-value b) (:clock-value a))]
@@ -135,38 +77,39 @@
       (compare (:message-id a) (:message-id b))
       initial-comparison)))
 
-(defn initialize [prepared-message]
-  (conj (linked/build compare-fn)
-        prepared-message))
+(defn add-group-info [current-message previous-message next-message]
+  (assoc current-message
+         :first?          (nil? previous-message)
+         :first-in-group? (or (nil? previous-message)
+                              (not (same-group? current-message previous-message)))
+         :last-in-group?  (or (nil? next-message)
+                              (not (same-group? current-message next-message)))
+         :display-photo? (display-photo? current-message)))
+
+(defn update-next-message [current-message next-message]
+  (assoc next-message :first-in-group? (not (same-group? current-message next-message))))
+
+(defn update-previous-message [current-message previous-message]
+  (assoc previous-message
+         :first?          false
+         :last-in-group?  (not (same-group? current-message previous-message))))
 
 (defn insert-message [old-stream prepared-message]
   (let [[stream inserted-at previous-at next-at]
         (linked/add old-stream
                     prepared-message)
         previous-message (linked/get-at stream previous-at)
-        next-message (linked/get-at stream next-at)]
-    ;; HEAD
-    (cond (nil? previous-at)
-          (linked/update-at stream inserted-at #(assoc % :last-in-group? true
-                                                       :last? true
-                                                       :display-photo? (display-photo? prepared-message)
-                                                       :last-outgoing? (:outgoing prepared-message)))
-
-        ;; Appending, nothing to do
-          (nil? next-at)
-          stream
-
-        ;; inserted in the middle
-          :else
-          (let [message-with-pos-data (add-positional-metadata-to-message prepared-message previous-message)]
-            (linked/update-at stream next-at #(add-positional-metadata-to-message % message-with-pos-data))))))
+        next-message (linked/get-at stream next-at)
+        message-with-pos-data (add-group-info prepared-message previous-message next-message)]
+    (cond-> (linked/update-at stream inserted-at (constantly message-with-pos-data))
+      next-message
+      (linked/update-at next-at #(update-next-message message-with-pos-data %))
+      previous-message
+      (linked/update-at previous-at #(update-previous-message message-with-pos-data %)))))
 
 (defn add-message [stream message]
-  (let [prepared-message (prepare-message message)]
-    ;; Outside the range, we don't add it
-    (if (= (count stream) 0)
-      (initialize prepared-message)
-      (insert-message stream prepared-message))))
+  (insert-message (or stream (linked/build compare-fn))
+                  (prepare-message message)))
 
 (defn concat-streams [stream messages]
   (reduce add-message stream messages))

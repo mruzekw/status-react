@@ -17,8 +17,8 @@
     2))
 
 (defn last-message-padding
-  [{:keys [last? typing]}]
-  (when (and last? (not typing))
+  [{:keys [first? typing]}]
+  (when (and first? (not typing))
     {:padding-bottom 16}))
 
 (defn message-body

@@ -123,8 +123,15 @@
               {:db            (cond->
                                (-> db
                                    (update-in [:chats chat-id :messages] assoc message-id prepared-message)
-                                   (update-in [:chats chat-id :last-clock-value] (partial utils.clocks/receive clock-value))
-                                   (update-in [:chats chat-id :message-list] message-list/add-message prepared-message))
+                                   (update-in [:chats chat-id :last-clock-value] (partial utils.clocks/receive clock-value)))
+                                ;; Append to list if:
+                                ;; We are on this chat
+                                ;; OR
+                                ;; The chat has been initialized
+                                (or
+                                 current-chat?
+                                 (get-in db [:chats :messages-initialized?]))
+                                (update-in [:chats chat-id :message-list] message-list/add-message prepared-message)
 
                                 (and (not current-chat?)
                                      (not= from current-public-key))
@@ -151,7 +158,7 @@
               (add-message {:batch?       true
                             :message      message
                             :metadata     metadata
-                            :current-chat current-chat?
+                            :current-chat? current-chat?
                             :raw-message  js-obj})
               (commands-receiving/receive message))))
 

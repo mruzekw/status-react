@@ -109,9 +109,10 @@
  (fn [messages]
    (save-messages-rpc messages)))
 
-(fx/defn save-messages [cofx]
-  (when-let [messages (get-in cofx [:db :messages/stored])]
-    {::save-message messages}))
+(fx/defn save-messages [{:keys [db]}]
+  (when-let [messages (:messages/stored db)]
+    {:db (dissoc db :messages/stored)
+     ::save-message messages}))
 
 (fx/defn handle-save-messages
   {:events [::save-messages]}
