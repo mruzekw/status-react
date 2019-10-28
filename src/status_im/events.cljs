@@ -2,6 +2,8 @@
   (:require [clojure.string :as string]
             [re-frame.core :as re-frame]
             [status-im.multiaccounts.core :as multiaccounts]
+            [status-im.data-store.messages :as data-store.messages]
+
             [status-im.multiaccounts.create.core :as multiaccounts.create]
             [status-im.multiaccounts.login.core :as multiaccounts.login]
             [status-im.multiaccounts.logout.core :as multiaccounts.logout]
@@ -164,7 +166,10 @@
 (handlers/register-handler-fx
  :multiaccounts.logout.ui/logout-confirmed
  (fn [cofx _]
-   (multiaccounts.logout/logout cofx)))
+   (fx/merge
+    cofx
+    (data-store.messages/save-messages)
+    (multiaccounts.logout/logout))))
 
 ;; multiaccounts update module
 

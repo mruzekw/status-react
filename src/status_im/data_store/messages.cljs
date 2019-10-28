@@ -69,7 +69,7 @@
 (defn save-messages-rpc [messages]
   (let [confirmations (keep :metadata messages)]
     (json-rpc/call {:method "shhext_saveMessages"
-                    :params [(map ->rpc messages)]
+                    :params [messages]
                     :on-success #(re-frame/dispatch [:message/messages-persisted confirmations])
                     :on-failure #(log/error "failed to save messages" %)})))
 
@@ -109,14 +109,17 @@
  (fn [messages]
    (save-messages-rpc messages)))
 
-(fx/defn handle-save-messages
-  {:events [::save-messages]}
-  [cofx]
+(fx/defn save-messages [cofx]
   (when-let [messages (get-in cofx [:db :messages/stored])]
     {::save-message messages}))
 
+(fx/defn handle-save-messages
+  {:events [::save-messages]}
+  [cofx]
+  (save-messages cofx))
+
 (fx/defn save-message [{:keys [db]} message]
-  {:db (update db :messages/stored conj message)
+  {:db (update db :messages/stored conj (->rpc message))
    :dispatch-debounce [{:key :save-messages
                         :event [::save-messages]
                         :delay 500}]})
