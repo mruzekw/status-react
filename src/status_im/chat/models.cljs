@@ -104,6 +104,18 @@
               {:db (update-in db [:chats chat-id] merge chat)}
               (chats-store/save-chat chat))))
 
+(fx/defn handle-save-chat
+  {:events [::save-chat]}
+  [{:keys [db] :as cofx} chat-id]
+  (chats-store/save-chat cofx (get-in db [:chats chat-id])))
+
+(fx/defn save-chat-delayed
+  "Upsert chat when not deleted"
+  [_ chat-id]
+  {:dispatch-debounce [{:key :save-chat
+                        :event [::save-chat chat-id]
+                        :delay 500}]})
+
 (fx/defn add-public-chat
   "Adds new public group chat to db"
   [cofx topic]

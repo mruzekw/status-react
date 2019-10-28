@@ -109,8 +109,17 @@
  (fn [messages]
    (save-messages-rpc messages)))
 
-(fx/defn save-message [cofx message]
-  {::save-message [message]})
+(fx/defn handle-save-messages
+  {:events [::save-messages]}
+  [cofx]
+  (when-let [messages (get-in cofx [:db :messages/stored])]
+    {::save-message messages}))
+
+(fx/defn save-message [{:keys [db]} message]
+  {:db (update db :messages/stored conj message)
+   :dispatch-debounce [{:key :save-messages
+                        :event [::save-messages]
+                        :delay 500}]})
 
 (fx/defn delete-message [cofx id]
   (delete-message-rpc id))

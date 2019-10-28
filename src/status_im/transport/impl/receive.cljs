@@ -66,5 +66,5 @@
                          :metadata (:metadata cofx)
                          :js-obj (:js-obj cofx))]
       (fx/merge cofx
-                (chat.message/receive-many [message])
+                (chat.message/receive-one message)
                 (ens/verify-names-from-message this signature)))))

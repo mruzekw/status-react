@@ -633,11 +633,6 @@
    (chat/disable-chat-cooldown cofx)))
 
 (handlers/register-handler-fx
- :message/add
- (fn [cofx [_ messages]]
-   (chat.message/receive-many cofx messages)))
-
-(handlers/register-handler-fx
  :message/update-message-status
  (fn [cofx [_ chat-id message-id status]]
    (chat.message/update-message-status cofx chat-id message-id status)))
