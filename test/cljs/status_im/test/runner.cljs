@@ -78,5 +78,4 @@
 
 (set! goog.DEBUG false)
 
-(doo-tests
- 'status-im.test.chat.models.message-list)
+(doo-tests)

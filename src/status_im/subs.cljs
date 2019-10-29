@@ -736,8 +736,9 @@
  :<- [:chats/all-loaded?]
  :<- [:chats/public?]
  (fn [[{:keys [message-list]} messages-gaps range all-loaded? public?]]
-   (-> message-list
-       (chat.db/add-gaps messages-gaps range all-loaded? public?))))
+   (->
+    (filter :key (vals message-list))
+    (chat.db/add-gaps messages-gaps range all-loaded? public?))))
 
 (re-frame/reg-sub
  :chats/current-chat-intro-status

@@ -39,9 +39,13 @@
 (defn- add-timestamp [{:keys [whisper-timestamp] :as msg}]
   (assoc msg :timestamp-str (time/timestamp->time whisper-timestamp)))
 
+(defn- add-key [{:keys [clock-value message-id] :as msg}]
+  (assoc msg :key (str clock-value message-id)))
+
 (defn prepare-message [message]
   (-> message
       add-datemark
+      add-key
       add-timestamp))
 
 (defn intersperse-datemarks
@@ -94,6 +98,16 @@
          :first?          false
          :last-in-group?  (not (same-group? current-message previous-message))))
 
+(defn insert-message-map [old-stream {:keys [key] :as prepared-message}]
+  (let [previous-message (second (first (subseq old-stream < key)))
+        next-message (second (first (subseq old-stream > key)))
+        message-with-pos-data (add-group-info prepared-message previous-message next-message)]
+    (cond-> (assoc old-stream key message-with-pos-data)
+      next-message
+      (update (:key next-message) #(update-next-message message-with-pos-data %))
+      previous-message
+      (update (:key previous-message) #(update-previous-message message-with-pos-data %)))))
+
 (defn insert-message [old-stream prepared-message]
   (let [[stream inserted-at previous-at next-at]
         (linked/add old-stream
@@ -108,12 +122,12 @@
       (linked/update-at previous-at #(update-previous-message message-with-pos-data %)))))
 
 (defn add-message [stream message]
-  (insert-message (or stream (linked/build compare-fn))
-                  (prepare-message message)))
+  (insert-message-map (or stream (sorted-map-by >))
+                      (prepare-message message)))
 
 (defn concat-streams [stream messages]
   (reduce add-message stream messages))
 
 (defn build [messages]
-  (reduce add-message (linked/build compare-fn) messages))
+  (reduce add-message (sorted-map-by >) messages))
 
