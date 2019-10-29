@@ -129,7 +129,7 @@
    [react/view
     {:style {:flex       1
              :height     200
-             :max-height 336}}
+             :max-height 338}}
     [react/scroll-view
      {:content-container-style {:justify-content :flex-start}}
      (for [[acc accessibility-n] (map vector multiaccounts (range (count multiaccounts)))]
@@ -208,7 +208,7 @@
               :justify-content :center}}
      [react/view
       {:style
-       {:max-height       400
+       {:max-height       420
         :flex             1
         :justify-content  :flex-start}}
       [react/view {:style {:justify-content :flex-start
@@ -322,7 +322,8 @@
                                    "-alt") (step-kw-to-num step)))))]
      (cond (#{:choose-key :select-key-storage} step)
            ; Use nested text for the "Learn more" link
-           [react/nested-text {:style styles/wizard-text}
+           [react/nested-text {:style (merge styles/wizard-text
+                                             {:height 60})}
             (str (i18n/label (keyword (str "intro-wizard-text" (step-kw-to-num step)))) " ")
             [{:on-press #(re-frame/dispatch [:bottom-sheet/show-sheet :learn-more
                                              {:title (i18n/label (if (= step :choose-key) :t/about-names-title :t/about-key-storage-title))
